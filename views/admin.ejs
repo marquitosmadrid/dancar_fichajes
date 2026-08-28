@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Administración - Control Horario</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col justify-between">
+
+    <div class="max-w-4xl w-full mx-auto p-6 bg-white rounded-xl shadow-md mt-10 mb-10">
+        <header class="mb-6 flex justify-between items-center border-b pb-4">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-800">Panel de Administración</h1>
+                <p class="text-sm text-gray-500">Sesión iniciada como: <%= adminUser.nombre %></p>
+            </div>
+            <a href="/logout" class="bg-red-50 hover:bg-red-100 text-red-600 text-xs font-semibold py-2 px-4 rounded transition border border-red-200">
+                Cerrar Sesión
+            </a>
+        </header>
+
+        <!-- SECCIÓN: Gestión de Usuarios -->
+        <div class="mb-10 bg-gray-50 p-4 rounded-lg border">
+            <h2 class="text-lg font-semibold text-gray-700 mb-3">Gestión de Usuarios (Crear / Modificar)</h2>
+            <form action="/admin/usuario/guardar" method="POST" class="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+                <input type="hidden" name="id" id="usuario_id">
+                <div>
+                    <label class="block text-xs text-gray-600 mb-1">Nombre</label>
+                    <input type="text" name="nombre" id="usuario_nombre" required class="w-full border rounded px-2 py-1 text-xs bg-white">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-600 mb-1">Usuario</label>
+                    <input type="text" name="username" id="usuario_username" required class="w-full border rounded px-2 py-1 text-xs bg-white">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-600 mb-1">Contraseña (Nueva/Cambio)</label>
+                    <input type="password" name="password" id="usuario_password" placeholder="Dejar en blanco si no cambia" class="w-full border rounded px-2 py-1 text-xs bg-white">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-600 mb-1">Rol</label>
+                    <select name="rol" id="usuario_rol" class="w-full border rounded px-2 py-1 text-xs bg-white">
+                        <option value="trabajador">Trabajador</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                </div>
+                <div class="flex space-x-2">
+                    <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-3 rounded text-xs">Guardar</button>
+                    <button type="button" onclick="limpiarFormularioUsuario()" class="bg-gray-300 hover:bg-gray-400 text-gray-700 font-medium py-2 px-2 rounded text-xs">Limpiar</button>
+                </div>
+            </form>
+
+            <div class="mt-4 border rounded overflow-hidden bg-white">
+                <table class="min-w-full divide-y divide-gray-200 text-xs">
+                    <thead class="bg-gray-100">
+                        <tr>
+                            <th class="px-3 py-2 text-left font-medium text-gray-600">Nombre</th>
+                            <th class="px-3 py-2 text-left font-medium text-gray-600">Usuario</th>
+                            <th class="px-3 py-2 text-left font-medium text-gray-600">Rol</th>
+                            <th class="px-3 py-2 text-center font-medium text-gray-600">Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200">
+                        <% usuarios.forEach(u => { %>
+                            <tr>
+                                <td class="px-3 py-2 font-medium text-gray-800"><%= u.nombre %></td>
+                                <td class="px-3 py-2 text-gray-600"><%= u.username %></td>
+                                <td class="px-3 py-2 uppercase font-semibold text-indigo-600"><%= u.rol %></td>
+                                <td class="px-3 py-2 text-center">
+                                    <button type="button" onclick="cargarUsuarioParaEditar('<%= u.id %>', '<%= u.nombre %>', '<%= u.username %>', '<%= u.rol %>')" class="bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded text-xs">Editar</button>
+                                </td>
+                            </tr>
+                        <% }) %>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- SECCIÓN: Historial Global de Fichajes -->
+        <div>
+            <h2 class="text-lg font-semibold text-gray-700 mb-3">Historial Global de Fichajes</h2>
+            <div class="border rounded-lg overflow-hidden">
+                <table class="min-w-full divide-y divide-gray-200 text-sm">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-4 py-3 text-left font-medium text-gray-500">Trabajador</th>
+                            <th class="px-4 py-3 text-left font-medium text-gray-500">Tipo</th>
+                            <th class="px-4 py-3 text-left font-medium text-gray-500">Fecha y Hora</th>
+                            <th class="px-4 py-3 text-center font-medium text-gray-500">Acciones (Modificar / Borrar)</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200 bg-white">
+                        <% if (fichajes && fichajes.length > 0) { %>
+                            <% fichajes.forEach(f => { %>
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-4 py-3 font-medium text-gray-800"><%= f.nombre_trabajador %></td>
+                                    <td class="px-4 py-3 uppercase font-semibold <%= f.tipo === 'entrada' ? 'text-green-600' : 'text-red-600' %>">
+                                        <%= f.tipo %>
+                                    </td>
+                                    <td class="px-4 py-3 text-gray-600 text-xs"><%= f.timestamp %></td>
+                                    <td class="px-4 py-3">
+                                        <div class="flex items-center justify-center space-x-2">
+                                            <!-- Formulario de actualización de hora -->
+                                            <form action="/admin/editar" method="POST" class="flex items-center space-x-1">
+                                                <input type="hidden" name="fichaje_id" value="<%= f.id %>">
+                                                <input type="text" name="nuevo_timestamp" value="<%= f.timestamp %>" class="border rounded px-2 py-1 text-xs w-36 bg-white">
+                                                <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white py-1 px-2 rounded text-xs">Actualizar</button>
+                                            </form>
+
+                                            <!-- Formulario para eliminar el fichaje duplicado -->
+                                            <form action="/admin/fichajes/eliminar" method="POST" onsubmit="return confirm('¿Seguro que deseas eliminar este fichaje?');">
+                                                <input type="hidden" name="fichaje_id" value="<%= f.id %>">
+                                                <button type="submit" class="bg-red-600 hover:bg-red-700 text-white py-1 px-2 rounded text-xs font-semibold">Eliminar</button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <% }) %>
+                        <% } else { %>
+                            <tr>
+                                <td colspan="4" class="px-4 py-3 text-center text-gray-400">No hay fichajes registrados.</td>
+                            </tr>
+                        <% } %>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function cargarUsuarioParaEditar(id, nombre, username, rol) {
+            document.getElementById('usuario_id').value = id;
+            document.getElementById('usuario_nombre').value = nombre;
+            document.getElementById('usuario_username').value = username;
+            document.getElementById('usuario_rol').value = rol;
+            document.getElementById('usuario_password').placeholder = "Nueva contraseña (opcional)";
+        }
+        function limpiarFormularioUsuario() {
+            document.getElementById('usuario_id').value = '';
+            document.getElementById('usuario_nombre').value = '';
+            document.getElementById('usuario_username').value = '';
+            document.getElementById('usuario_password').value = '';
+            document.getElementById('usuario_rol').value = 'trabajador';
+            document.getElementById('usuario_password').placeholder = "Obligatorio para nuevo usuario";
+        }
+    </script>
+</body>
+</html>
