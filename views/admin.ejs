@@ -75,6 +75,29 @@
             </div>
         </div>
 
+        <!-- SECCIÓN: Importar Fichajes por Excel -->
+        <div class="mb-10 bg-gray-50 p-4 rounded-lg border">
+            <h2 class="text-lg font-semibold text-gray-700 mb-3">Importar Fichajes desde Excel</h2>
+            <form action="/admin/fichajes/importar" method="POST" enctype="multipart/form-data" class="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+                <div>
+                    <label class="block text-xs text-gray-600 mb-1">Seleccionar Trabajador</label>
+                    <select name="usuario_id" required class="w-full border rounded px-2 py-1.5 text-xs bg-white">
+                        <option value="">-- Elige un trabajador --</option>
+                        <% usuarios.forEach(u => { %>
+                            <option value="<%= u.id %>"><%= u.nombre %> (<%= u.username %>)</option>
+                        <% }) %>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-600 mb-1">Fichero Excel (Cabeceras: fecha, hora, tipo)</label>
+                    <input type="file" name="archivo_excel" accept=".xlsx, .xls" required class="w-full border rounded px-2 py-1 text-xs bg-white">
+                </div>
+                <div>
+                    <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2 px-3 rounded text-xs">Subir e Importar Fichajes</button>
+                </div>
+            </form>
+        </div>
+
         <!-- SECCIÓN: Historial Global de Fichajes -->
         <div>
             <h2 class="text-lg font-semibold text-gray-700 mb-3">Historial Global de Fichajes</h2>

@@ -1,9 +1,13 @@
 // server.js
 const express = require('express');
 const { createClient } = require('@libsql/client');
-const path = require('path');
+const path = path ? require('path') : null;
 const bcrypt = require('bcryptjs');
 const session = require('express-session');
+const multer = require('multer');
+const xlsx = require('xlsx');
+
+const upload = multer({ storage: multer.memoryStorage() });
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -286,6 +290,57 @@ app.post('/admin/usuario/guardar', verificarAdmin, async (req, res) => {
         res.redirect('/admin');
     } catch (err) {
         return res.status(500).send("Error al guardar usuario.");
+    }
+});
+
+// Endpoint para importar fichajes mediante Excel
+app.post('/admin/fichajes/importar', verificarAdmin, upload.single('archivo_excel'), async (req, res) => {
+    const { usuario_id } = req.body;
+
+    if (!usuario_id || !req.file) {
+        return res.status(400).send("Faltan el usuario o el archivo Excel.");
+    }
+
+    try {
+        const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
+        const sheetName = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[sheetName];
+        const rows = xlsx.utils.sheet_to_json(sheet);
+
+        for (const row of rows) {
+            // Normalizar las claves de las columnas por si tienen mayúsculas o espacios
+            const fecha = row.fecha || row.Fecha;
+            const hora = row.hora || row.Hora;
+            let tipo = row.tipo || row.Tipo;
+
+            if (fecha && hora && tipo) {
+                tipo = String(tipo).trim().toLowerCase();
+                if (tipo === 'entrada' || tipo === 'salida') {
+                    // Formatear la fecha correctamente (maneja tanto formato YYYY-MM-DD como números de serie de Excel si aplica)
+                    let fechaStr = fecha;
+                    if (typeof fecha === 'number') {
+                        const parsedDate = xlsx.SSF.parse_date_code(fecha);
+                        fechaStr = `${parsedDate.y}-${String(parsedDate.m).padStart(2, '0')}-${String(parsedDate.d).padStart(2, '0')}`;
+                    }
+
+                    // Asegurar formato de hora HH:MM:SS
+                    let horaStr = String(hora).trim();
+                    if (horaStr.length === 5) horaStr += ':00';
+
+                    const timestampFinal = `${fechaStr} ${horaStr}`;
+
+                    await db.execute({
+                        sql: `INSERT INTO fichajes (usuario_id, tipo, timestamp) VALUES (?, ?, ?)`,
+                        args: [usuario_id, tipo, timestampFinal]
+                    });
+                }
+            }
+        }
+
+        res.redirect('/admin');
+    } catch (err) {
+        console.error("Error al procesar el archivo Excel:", err);
+        return res.status(500).send("Error al procesar el fichero Excel.");
     }
 });
 
