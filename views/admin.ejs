@@ -98,9 +98,35 @@
             </form>
         </div>
 
-        <!-- SECCIÓN: Historial Global de Fichajes -->
+        <!-- SECCIÓN: Historial y Filtros de Fichajes -->
         <div>
-            <h2 class="text-lg font-semibold text-gray-700 mb-3">Historial Global de Fichajes</h2>
+            <h2 class="text-lg font-semibold text-gray-700 mb-3">Historial de Fichajes y Filtros</h2>
+            
+            <!-- Formulario de Filtros -->
+            <form action="/admin" method="GET" class="bg-gray-50 p-4 rounded-lg border mb-4 grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                <div>
+                    <label class="block text-xs text-gray-600 mb-1">Trabajador</label>
+                    <select name="trabajador_id" class="w-full border rounded px-2 py-1.5 text-xs bg-white">
+                        <option value="">-- Todos los trabajadores --</option>
+                        <% usuarios.forEach(u => { %>
+                            <option value="<%= u.id %>" <%= filtros.trabajador_id == u.id ? 'selected' : '' %>><%= u.nombre %></option>
+                        <% }) %>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-600 mb-1">Fecha Inicio</label>
+                    <input type="date" name="fecha_inicio" value="<%= filtros.fecha_inicio %>" class="w-full border rounded px-2 py-1 text-xs bg-white">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-600 mb-1">Fecha Fin</label>
+                    <input type="date" name="fecha_fin" value="<%= filtros.fecha_fin %>" class="w-full border rounded px-2 py-1 text-xs bg-white">
+                </div>
+                <div class="flex space-x-2">
+                    <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-3 rounded text-xs">Filtrar</button>
+                    <a href="/admin" class="bg-gray-300 hover:bg-gray-400 text-gray-700 font-medium py-2 px-2 rounded text-xs text-center flex items-center justify-center">Limpiar</a>
+                </div>
+            </form>
+
             <div class="border rounded-lg overflow-hidden">
                 <table class="min-w-full divide-y divide-gray-200 text-sm">
                     <thead class="bg-gray-50">
@@ -129,7 +155,7 @@
                                                 <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white py-1 px-2 rounded text-xs">Actualizar</button>
                                             </form>
 
-                                            <!-- Formulario para eliminar el fichaje duplicado -->
+                                            <!-- Formulario para eliminar el fichaje -->
                                             <form action="/admin/fichajes/eliminar" method="POST" onsubmit="return confirm('¿Seguro que deseas eliminar este fichaje?');">
                                                 <input type="hidden" name="fichaje_id" value="<%= f.id %>">
                                                 <button type="submit" class="bg-red-600 hover:bg-red-700 text-white py-1 px-2 rounded text-xs font-semibold">Eliminar</button>
@@ -140,7 +166,7 @@
                             <% }) %>
                         <% } else { %>
                             <tr>
-                                <td colspan="4" class="px-4 py-3 text-center text-gray-400">No hay fichajes registrados.</td>
+                                <td colspan="4" class="px-4 py-3 text-center text-gray-400">No hay fichajes registrados para los filtros seleccionados.</td>
                             </tr>
                         <% } %>
                     </tbody>

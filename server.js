@@ -241,22 +241,52 @@ app.post('/fichajes/eliminar', verificarAuth, async (req, res) => {
     }
 });
 
-// Ruta para el panel de administración (Protegido por admin)
+// Ruta para el panel de administración con soporte para filtros
 app.get('/admin', verificarAdmin, async (req, res) => {
+    const { trabajador_id, fecha_inicio, fecha_fin } = req.query;
+
     try {
         const usuariosResult = await db.execute(`SELECT * FROM usuarios`);
         const usuarios = usuariosResult.rows;
 
-        const queryFichajes = `
+        // Construcción dinámica de la consulta según los filtros aplicados
+        let queryFichajes = `
             SELECT fichajes.*, usuarios.nombre as nombre_trabajador 
             FROM fichajes 
             JOIN usuarios ON fichajes.usuario_id = usuarios.id 
-            ORDER BY fichajes.timestamp ASC
+            WHERE 1=1
         `;
-        const fichajesResult = await db.execute(queryFichajes);
+        let queryArgs = [];
+
+        if (trabajador_id) {
+            queryFichajes += ` AND fichajes.usuario_id = ?`;
+            queryArgs.push(trabajador_id);
+        }
+
+        if (fecha_inicio) {
+            queryFichajes += ` AND date(fichajes.timestamp) >= ?`;
+            queryArgs.push(fecha_inicio);
+        }
+
+        if (fecha_fin) {
+            queryFichajes += ` AND date(fichajes.timestamp) <= ?`;
+            queryArgs.push(fecha_fin);
+        }
+
+        queryFichajes += ` ORDER BY fichajes.timestamp ASC`;
+
+        const fichajesResult = await db.execute({
+            sql: queryFichajes,
+            args: queryArgs
+        });
         const fichajes = fichajesResult.rows;
 
-        res.render('admin', { usuarios, fichajes, adminUser: req.session.usuario });
+        res.render('admin', { 
+            usuarios, 
+            fichajes, 
+            adminUser: req.session.usuario,
+            filtros: { trabajador_id: trabajador_id || '', fecha_inicio: fecha_inicio || '', fecha_fin: fecha_fin || '' }
+        });
     } catch (err) {
         return res.status(500).send("Error al cargar administración.");
     }
