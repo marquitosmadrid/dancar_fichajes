@@ -338,24 +338,32 @@ app.post('/admin/fichajes/importar', verificarAdmin, upload.single('archivo_exce
         const rows = xlsx.utils.sheet_to_json(sheet);
 
         for (const row of rows) {
-            // Normalizar las claves de las columnas por si tienen mayúsculas o espacios
             const fecha = row.fecha || row.Fecha;
             const hora = row.hora || row.Hora;
             let tipo = row.tipo || row.Tipo;
 
-            if (fecha && hora && tipo) {
+            if ((fecha !== undefined) && (hora !== undefined) && tipo) {
                 tipo = String(tipo).trim().toLowerCase();
                 if (tipo === 'entrada' || tipo === 'salida') {
-                    // Formatear la fecha correctamente (maneja tanto formato YYYY-MM-DD como números de serie de Excel si aplica)
+                    // Formatear la fecha
                     let fechaStr = fecha;
                     if (typeof fecha === 'number') {
                         const parsedDate = xlsx.SSF.parse_date_code(fecha);
                         fechaStr = `${parsedDate.y}-${String(parsedDate.m).padStart(2, '0')}-${String(parsedDate.d).padStart(2, '0')}`;
                     }
 
-                    // Asegurar formato de hora HH:MM:SS
-                    let horaStr = String(hora).trim();
-                    if (horaStr.length === 5) horaStr += ':00';
+                    // Formatear la hora (Maneja tanto si viene como número decimal de Excel como si es texto)
+                    let horaStr = hora;
+                    if (typeof hora === 'number') {
+                        const totalSeconds = Math.round(hora * 86400);
+                        const hrs = Math.floor(totalSeconds / 3600);
+                        const mins = Math.floor((totalSeconds % 3600) / 60);
+                        const secs = totalSeconds % 60;
+                        horaStr = `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+                    } else {
+                        horaStr = String(hora).trim();
+                        if (horaStr.length === 5) horaStr += ':00';
+                    }
 
                     const timestampFinal = `${fechaStr} ${horaStr}`;
 
@@ -371,25 +379,6 @@ app.post('/admin/fichajes/importar', verificarAdmin, upload.single('archivo_exce
     } catch (err) {
         console.error("Error al procesar el archivo Excel:", err);
         return res.status(500).send("Error al procesar el fichero Excel.");
-    }
-});
-
-// Endpoint para que el administrador modifique un fichaje directamente
-app.post('/admin/editar', verificarAdmin, async (req, res) => {
-    const { fichaje_id, nuevo_timestamp } = req.body;
-
-    if (!fichaje_id || !nuevo_timestamp) {
-        return res.status(400).send("Faltan datos para realizar la actualización.");
-    }
-
-    try {
-        await db.execute({
-            sql: `UPDATE fichajes SET timestamp = ? WHERE id = ?`,
-            args: [nuevo_timestamp, fichaje_id]
-        });
-        res.redirect('/admin');
-    } catch (err) {
-        return res.status(500).send("Error al actualizar el fichaje.");
     }
 });
 
