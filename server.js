@@ -1,6 +1,6 @@
 // server.js
 const express = require('express');
-const sqlite3 = express ? require('sqlite3').verbose() : null;
+const { createClient } = require('@libsql/client');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 const session = require('express-session');
@@ -22,46 +22,54 @@ app.use(session({
     saveUninitialized: false
 }));
 
-// Inicialización de la Base de Datos SQLite
-const dbPath = path.resolve(__dirname, 'database.sqlite');
-const db = new sqlite3.Database(dbPath, (err) => {
-    if (err) {
-        console.error('Error al conectar con la base de datos:', err.message);
-    } else {
-        console.log('Conectado a la base de datos SQLite.');
-        inicializarTablas();
-    }
+// Inicialización de la Base de Datos con LibSQL (compatible con Turso y SQLite local)
+const db = createClient({
+    url: process.env.TURSO_DATABASE_URL || 'file:database.sqlite',
+    authToken: process.env.TURSO_AUTH_TOKEN,
 });
 
-function inicializarTablas() {
-    db.serialize(() => {
-        db.run(`CREATE TABLE IF NOT EXISTS usuarios (
+async function inicializarTablas() {
+    try {
+        await db.execute(`CREATE TABLE IF NOT EXISTS usuarios (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             nombre TEXT NOT NULL,
             username TEXT UNIQUE NOT NULL,
             password TEXT NOT NULL,
             rol TEXT CHECK(rol IN ('trabajador', 'admin')) NOT NULL
-        )`, () => {
-            db.get(`SELECT COUNT(*) as count FROM usuarios`, async (err, row) => {
-                if (!err && row && row.count === 0) {
-                    const hashAdmin = await bcrypt.hash('admin123', 10);
-                    const hashTrabajador = await bcrypt.hash('trabajador123', 10);
-                    db.run(`INSERT INTO usuarios (nombre, username, password, rol) VALUES (?, ?, ?, ?)`, ['Administrador', 'admin', hashAdmin, 'admin']);
-                    db.run(`INSERT INTO usuarios (nombre, username, password, rol) VALUES (?, ?, ?, ?)`, ['Trabajador Ejemplo', 'trabajador', hashTrabajador, 'trabajador']);
-                    console.log('Usuarios por defecto creados (admin / admin123 y trabajador / trabajador123).');
-                }
-            });
-        });
+        )`);
 
-        db.run(`CREATE TABLE IF NOT EXISTS fichajes (
+        await db.execute(`CREATE TABLE IF NOT EXISTS fichajes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             usuario_id INTEGER,
             tipo TEXT CHECK(tipo IN ('entrada', 'salida')) NOT NULL,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(usuario_id) REFERENCES usuarios(id)
         )`);
-    });
+
+        const result = await db.execute(`SELECT COUNT(*) as count FROM usuarios`);
+        const count = result.rows[0].count;
+
+        if (count === 0) {
+            const hashAdmin = await bcrypt.hash('admin123', 10);
+            const hashTrabajador = await bcrypt.hash('trabajador123', 10);
+            
+            await db.execute({
+                sql: `INSERT INTO usuarios (nombre, username, password, rol) VALUES (?, ?, ?, ?)`,
+                args: ['Administrador', 'admin', hashAdmin, 'admin']
+            });
+            await db.execute({
+                sql: `INSERT INTO usuarios (nombre, username, password, rol) VALUES (?, ?, ?, ?)`,
+                args: ['Trabajador Ejemplo', 'trabajador', hashTrabajador, 'trabajador']
+            });
+            console.log('Usuarios por defecto creados (admin / admin123 y trabajador / trabajador123).');
+        }
+        console.log('Conectado y tablas inicializadas correctamente en la base de datos.');
+    } catch (err) {
+        console.error('Error al inicializar la base de datos:', err.message);
+    }
 }
+
+inicializarTablas();
 
 // Middlewares de autenticación
 function verificarAuth(req, res, next) {
@@ -83,10 +91,16 @@ app.get('/login', (req, res) => {
     res.render('login', { error: null });
 });
 
-app.post('/login', (req, res) => {
+app.post('/login', async (req, res) => {
     const { username, password } = req.body;
-    db.get(`SELECT * FROM usuarios WHERE username = ?`, [username], async (err, usuario) => {
-        if (err || !usuario) {
+    try {
+        const result = await db.execute({
+            sql: `SELECT * FROM usuarios WHERE username = ?`,
+            args: [username]
+        });
+        const usuario = result.rows[0];
+
+        if (!usuario) {
             return res.render('login', { error: 'Credenciales incorrectas.' });
         }
         const match = await bcrypt.compare(password, usuario.password);
@@ -99,7 +113,9 @@ app.post('/login', (req, res) => {
         } else {
             res.redirect('/');
         }
-    });
+    } catch (err) {
+        return res.render('login', { error: 'Error en base de datos.' });
+    }
 });
 
 app.get('/logout', (req, res) => {
@@ -109,23 +125,33 @@ app.get('/logout', (req, res) => {
 });
 
 // Ruta para ver el panel del trabajador (Protegido por sesión)
-app.get('/', verificarAuth, (req, res) => {
+app.get('/', verificarAuth, async (req, res) => {
     if (req.session.usuario.rol === 'admin') {
         return res.redirect('/admin');
     }
     const usuarioId = req.session.usuario.id; 
 
-    db.get(`SELECT * FROM usuarios WHERE id = ?`, [usuarioId], (err, usuario) => {
-        if (err || !usuario) return res.status(500).send("Error al cargar el usuario.");
-
-        db.all(`SELECT * FROM fichajes WHERE usuario_id = ? ORDER BY timestamp ASC`, [usuarioId], (err, fichajes) => {
-            if (err) return res.status(500).send("Error al cargar los fichajes.");
-            res.render('trabajador', { usuario, fichajes, errorDuplicado: null, datosPendientes: null });
+    try {
+        const userResult = await db.execute({
+            sql: `SELECT * FROM usuarios WHERE id = ?`,
+            args: [usuarioId]
         });
-    });
+        const usuario = userResult.rows[0];
+        if (!usuario) return res.status(500).send("Error al cargar el usuario.");
+
+        const fichajesResult = await db.execute({
+            sql: `SELECT * FROM fichajes WHERE usuario_id = ? ORDER BY timestamp ASC`,
+            args: [usuarioId]
+        });
+        const fichajes = fichajesResult.rows;
+
+        res.render('trabajador', { usuario, fichajes, errorDuplicado: null, datosPendientes: null });
+    } catch (err) {
+        return res.status(500).send("Error al cargar los datos.");
+    }
 });
 
-app.post('/fichar', verificarAuth, (req, res) => {
+app.post('/fichar', verificarAuth, async (req, res) => {
     const usuario_id = req.session.usuario.id;
     const { tipo, fecha, hora, accion_duplicado, fichaje_existente_id } = req.body;
 
@@ -150,52 +176,72 @@ app.post('/fichar', verificarAuth, (req, res) => {
 
     const fechaSoloDia = timestampFinal.split(' ')[0];
 
-    if (accion_duplicado === 'modificar' && fichaje_existente_id) {
-        db.run(`UPDATE fichajes SET timestamp = ? WHERE id = ?`, [timestampFinal, fichaje_existente_id], (err) => {
-            if (err) return res.status(500).send("Error al actualizar fichaje duplicado.");
-            return res.redirect('/');
-        });
-        return;
-    }
-
-    const queryCheck = `SELECT * FROM fichajes WHERE usuario_id = ? AND tipo = ? AND date(timestamp) = ?`;
-    db.get(queryCheck, [usuario_id, tipoLimpio, fechaSoloDia], (err, row) => {
-        if (err) return res.status(500).send("Error en base de datos.");
-
-        if (row && accion_duplicado !== 'crear_ambos') {
-            db.get(`SELECT * FROM usuarios WHERE id = ?`, [usuario_id], (usuarioErr, usuario) => {
-                db.all(`SELECT * FROM fichajes WHERE usuario_id = ? ORDER BY timestamp ASC`, [usuario_id], (fichajesErr, fichajes) => {
-                    return res.render('trabajador', {
-                        usuario,
-                        fichajes,
-                        errorDuplicado: `Ya tienes registrado un fichaje de '${tipoLimpio}' para el día ${fechaSoloDia}.`,
-                        datosPendientes: { usuario_id, tipo: tipoLimpio, timestampFinal, fichaje_existente_id: row.id }
-                    });
-                });
+    try {
+        if (accion_duplicado === 'modificar' && fichaje_existente_id) {
+            await db.execute({
+                sql: `UPDATE fichajes SET timestamp = ? WHERE id = ?`,
+                args: [timestampFinal, fichaje_existente_id]
             });
-            return;
+            return res.redirect('/');
         }
 
-        db.run(`INSERT INTO fichajes (usuario_id, tipo, timestamp) VALUES (?, ?, ?)`, [usuario_id, tipoLimpio, timestampFinal], (err) => {
-            if (err) return res.status(500).send("Error al registrar fichaje.");
-            res.redirect('/');
+        const queryCheck = `SELECT * FROM fichajes WHERE usuario_id = ? AND tipo = ? AND date(timestamp) = ?`;
+        const checkResult = await db.execute({
+            sql: queryCheck,
+            args: [usuario_id, tipoLimpio, fechaSoloDia]
         });
-    });
+        const row = checkResult.rows[0];
+
+        if (row && accion_duplicado !== 'crear_ambos') {
+            const userResult = await db.execute({
+                sql: `SELECT * FROM usuarios WHERE id = ?`,
+                args: [usuario_id]
+            });
+            const usuario = userResult.rows[0];
+
+            const fichajesResult = await db.execute({
+                sql: `SELECT * FROM fichajes WHERE usuario_id = ? ORDER BY timestamp ASC`,
+                args: [usuario_id]
+            });
+            const fichajes = fichajesResult.rows;
+
+            return res.render('trabajador', {
+                usuario,
+                fichajes,
+                errorDuplicado: `Ya tienes registrado un fichaje de '${tipoLimpio}' para el día ${fechaSoloDia}.`,
+                datosPendientes: { usuario_id, tipo: tipoLimpio, timestampFinal, fichaje_existente_id: row.id }
+            });
+        }
+
+        await db.execute({
+            sql: `INSERT INTO fichajes (usuario_id, tipo, timestamp) VALUES (?, ?, ?)`,
+            args: [usuario_id, tipoLimpio, timestampFinal]
+        });
+        res.redirect('/');
+    } catch (err) {
+        return res.status(500).send("Error en base de datos.");
+    }
 });
 
 // Endpoint para eliminar fichaje por parte del trabajador (solo sus propios fichajes)
-app.post('/fichajes/eliminar', verificarAuth, (req, res) => {
+app.post('/fichajes/eliminar', verificarAuth, async (req, res) => {
     const { fichaje_id } = req.body;
-    db.run(`DELETE FROM fichajes WHERE id = ? AND usuario_id = ?`, [fichaje_id, req.session.usuario.id], (err) => {
-        if (err) return res.status(500).send("Error al eliminar el fichaje.");
+    try {
+        await db.execute({
+            sql: `DELETE FROM fichajes WHERE id = ? AND usuario_id = ?`,
+            args: [fichaje_id, req.session.usuario.id]
+        });
         res.redirect('/');
-    });
+    } catch (err) {
+        return res.status(500).send("Error al eliminar el fichaje.");
+    }
 });
 
 // Ruta para el panel de administración (Protegido por admin)
-app.get('/admin', verificarAdmin, (req, res) => {
-    db.all(`SELECT * FROM usuarios`, [], (err, usuarios) => {
-        if (err) return res.status(500).send("Error al cargar los usuarios.");
+app.get('/admin', verificarAdmin, async (req, res) => {
+    try {
+        const usuariosResult = await db.execute(`SELECT * FROM usuarios`);
+        const usuarios = usuariosResult.rows;
 
         const queryFichajes = `
             SELECT fichajes.*, usuarios.nombre as nombre_trabajador 
@@ -203,74 +249,82 @@ app.get('/admin', verificarAdmin, (req, res) => {
             JOIN usuarios ON fichajes.usuario_id = usuarios.id 
             ORDER BY fichajes.timestamp ASC
         `;
+        const fichajesResult = await db.execute(queryFichajes);
+        const fichajes = fichajesResult.rows;
 
-        db.all(queryFichajes, [], (err, fichajes) => {
-            if (err) return res.status(500).send("Error al cargar administración.");
-            res.render('admin', { usuarios, fichajes, adminUser: req.session.usuario });
-        });
-    });
+        res.render('admin', { usuarios, fichajes, adminUser: req.session.usuario });
+    } catch (err) {
+        return res.status(500).send("Error al cargar administración.");
+    }
 });
 
 app.post('/admin/usuario/guardar', verificarAdmin, async (req, res) => {
     const { id, nombre, username, password, rol } = req.body;
 
-    if (id) {
-        if (password && password.trim() !== "") {
-            const hash = await bcrypt.hash(password, 10);
-            db.run(`UPDATE usuarios SET nombre = ?, username = ?, password = ?, rol = ? WHERE id = ?`, [nombre, username, hash, rol, id], (err) => {
-                if (err) return res.status(500).send("Error al actualizar usuario.");
-                res.redirect('/admin');
-            });
+    try {
+        if (id) {
+            if (password && password.trim() !== "") {
+                const hash = await bcrypt.hash(password, 10);
+                await db.execute({
+                    sql: `UPDATE usuarios SET nombre = ?, username = ?, password = ?, rol = ? WHERE id = ?`,
+                    args: [nombre, username, hash, rol, id]
+                });
+            } else {
+                await db.execute({
+                    sql: `UPDATE usuarios SET nombre = ?, username = ?, rol = ? WHERE id = ?`,
+                    args: [nombre, username, rol, id]
+                });
+            }
         } else {
-            db.run(`UPDATE usuarios SET nombre = ?, username = ?, rol = ? WHERE id = ?`, [nombre, username, rol, id], (err) => {
-                if (err) return res.status(500).send("Error al actualizar usuario.");
-                res.redirect('/admin');
+            if (!password) return res.status(400).send("La contraseña es obligatoria para nuevos usuarios.");
+            const hash = await bcrypt.hash(password, 10);
+            await db.execute({
+                sql: `INSERT INTO usuarios (nombre, username, password, rol) VALUES (?, ?, ?, ?)`,
+                args: [nombre, username, hash, rol]
             });
         }
-    } else {
-        if (!password) return res.status(400).send("La contraseña es obligatoria para nuevos usuarios.");
-        const hash = await bcrypt.hash(password, 10);
-        db.run(`INSERT INTO usuarios (nombre, username, password, rol) VALUES (?, ?, ?, ?)`, [nombre, username, hash, rol], (err) => {
-            if (err) return res.status(500).send("Error al crear usuario.");
-            res.redirect('/admin');
-        });
+        res.redirect('/admin');
+    } catch (err) {
+        return res.status(500).send("Error al guardar usuario.");
     }
 });
 
 // Endpoint para que el administrador modifique un fichaje directamente
-app.post('/admin/editar', verificarAdmin, (req, res) => {
+app.post('/admin/editar', verificarAdmin, async (req, res) => {
     const { fichaje_id, nuevo_timestamp } = req.body;
 
     if (!fichaje_id || !nuevo_timestamp) {
         return res.status(400).send("Faltan datos para realizar la actualización.");
     }
 
-    const query = `UPDATE fichajes SET timestamp = ? WHERE id = ?`;
-
-    db.run(query, [nuevo_timestamp, fichaje_id], (err) => {
-        if (err) {
-            console.error(err.message);
-            return res.status(500).send("Error al actualizar el fichaje.");
-        }
+    try {
+        await db.execute({
+            sql: `UPDATE fichajes SET timestamp = ? WHERE id = ?`,
+            args: [nuevo_timestamp, fichaje_id]
+        });
         res.redirect('/admin');
-    });
+    } catch (err) {
+        return res.status(500).send("Error al actualizar el fichaje.");
+    }
 });
 
 // Endpoint para que el administrador elimine cualquier fichaje
-app.post('/admin/fichajes/eliminar', verificarAdmin, (req, res) => {
+app.post('/admin/fichajes/eliminar', verificarAdmin, async (req, res) => {
     const { fichaje_id } = req.body;
 
     if (!fichaje_id) {
         return res.status(400).send("ID de fichaje no proporcionado.");
     }
 
-    db.run(`DELETE FROM fichajes WHERE id = ?`, [fichaje_id], (err) => {
-        if (err) {
-            console.error(err.message);
-            return res.status(500).send("Error al eliminar el fichaje.");
-        }
+    try {
+        await db.execute({
+            sql: `DELETE FROM fichajes WHERE id = ?`,
+            args: [fichaje_id]
+        });
         res.redirect('/admin');
-    });
+    } catch (err) {
+        return res.status(500).send("Error al eliminar el fichaje.");
+    }
 });
 
 // Arrancar servidor
