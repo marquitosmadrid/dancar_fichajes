@@ -1,3 +1,4 @@
+<!-- views/admin.ejs -->
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -100,7 +101,7 @@
 
         <!-- SECCIÓN: Historial y Filtros de Fichajes -->
         <div>
-            <h2 class="text-lg font-semibold text-gray-700 mb-3">Historial de Fichajes y Filtros</h2>
+            <h2 class="text-lg font-semibold text-gray-700 mb-3">Listado de Fichajes por Filtros</h2>
             
             <!-- Formulario de Filtros -->
             <form action="/admin" method="GET" class="bg-gray-50 p-4 rounded-lg border mb-4 grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
@@ -166,7 +167,7 @@
                             <% }) %>
                         <% } else { %>
                             <tr>
-                                <td colspan="4" class="px-4 py-3 text-center text-gray-400">No hay fichajes registrados para los filtros seleccionados.</td>
+                                <td colspan="4" class="px-4 py-3 text-center text-gray-400">Selecciona los filtros y haz clic en "Filtrar" para ver los fichajes requeridos.</td>
                             </tr>
                         <% } %>
                     </tbody>

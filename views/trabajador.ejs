@@ -1,4 +1,4 @@
-<!-- views/trabajador.ejs (Actualizado con alertas de duplicados y botón eliminar) -->
+<!-- views/trabajador.ejs -->
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -10,7 +10,6 @@
 <body class="bg-gray-100 min-h-screen flex flex-col justify-between">
 
     <div class="max-w-md w-full mx-auto p-6 bg-white rounded-xl shadow-md mt-10 mb-10">
-        <!-- En views/trabajador.ejs, dentro del bloque principal de la tarjeta, añade arriba un enlace de salida: -->
         <header class="mb-6 flex justify-between items-center border-b pb-4">
             <div>
                 <h1 class="text-xl font-bold text-gray-800">Control Horario DANCAR</h1>
@@ -73,9 +72,9 @@
             </div>
         </form>
 
-        <!-- Historial ordenado con opción de eliminar -->
+        <!-- Historial limitado a los últimos 4 días con opción de eliminar -->
         <div class="mt-8">
-            <h2 class="text-lg font-semibold text-gray-700 mb-3">Tus fichajes (Ordenados)</h2>
+            <h2 class="text-lg font-semibold text-gray-700 mb-3">Tus fichajes (Últimos 4 días)</h2>
             <div class="border rounded-lg overflow-hidden">
                 <table class="min-w-full divide-y divide-gray-200 text-sm">
                     <thead class="bg-gray-50">
@@ -103,7 +102,7 @@
                             <% }) %>
                         <% } else { %>
                             <tr>
-                                <td colspan="3" class="px-4 py-2 text-center text-gray-400">No hay fichajes registrados.</td>
+                                <td colspan="3" class="px-4 py-2 text-center text-gray-400">No hay fichajes en los últimos 4 días.</td>
                             </tr>
                         <% } %>
                     </tbody>

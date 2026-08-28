@@ -128,7 +128,7 @@ app.get('/logout', (req, res) => {
     });
 });
 
-// Ruta para ver el panel del trabajador (Protegido por sesión)
+// Ruta para ver el panel del trabajador (Muestra solo los últimos 4 días)
 app.get('/', verificarAuth, async (req, res) => {
     if (req.session.usuario.rol === 'admin') {
         return res.redirect('/admin');
@@ -143,8 +143,9 @@ app.get('/', verificarAuth, async (req, res) => {
         const usuario = userResult.rows[0];
         if (!usuario) return res.status(500).send("Error al cargar el usuario.");
 
+        // Consulta filtrada para obtener solo los fichajes de los últimos 4 días (inclusive hoy)
         const fichajesResult = await db.execute({
-            sql: `SELECT * FROM fichajes WHERE usuario_id = ? ORDER BY timestamp ASC`,
+            sql: `SELECT * FROM fichajes WHERE usuario_id = ? AND timestamp >= datetime('now', '-4 days') ORDER BY timestamp ASC`,
             args: [usuarioId]
         });
         const fichajes = fichajesResult.rows;
@@ -204,7 +205,7 @@ app.post('/fichar', verificarAuth, async (req, res) => {
             const usuario = userResult.rows[0];
 
             const fichajesResult = await db.execute({
-                sql: `SELECT * FROM fichajes WHERE usuario_id = ? ORDER BY timestamp ASC`,
+                sql: `SELECT * FROM fichajes WHERE usuario_id = ? AND timestamp >= datetime('now', '-4 days') ORDER BY timestamp ASC`,
                 args: [usuario_id]
             });
             const fichajes = fichajesResult.rows;
@@ -241,7 +242,7 @@ app.post('/fichajes/eliminar', verificarAuth, async (req, res) => {
     }
 });
 
-// Ruta para el panel de administración con soporte para filtros
+// Ruta para el panel de administración (No carga fichajes por defecto a menos que se apliquen filtros)
 app.get('/admin', verificarAdmin, async (req, res) => {
     const { trabajador_id, fecha_inicio, fecha_fin } = req.query;
 
@@ -249,37 +250,41 @@ app.get('/admin', verificarAdmin, async (req, res) => {
         const usuariosResult = await db.execute(`SELECT * FROM usuarios`);
         const usuarios = usuariosResult.rows;
 
-        // Construcción dinámica de la consulta según los filtros aplicados
-        let queryFichajes = `
-            SELECT fichajes.*, usuarios.nombre as nombre_trabajador 
-            FROM fichajes 
-            JOIN usuarios ON fichajes.usuario_id = usuarios.id 
-            WHERE 1=1
-        `;
-        let queryArgs = [];
+        let fichajes = [];
+        
+        // Solo ejecuta la consulta de fichajes si se ha seleccionado al menos un filtro de búsqueda
+        if (trabajador_id || fecha_inicio || fecha_fin) {
+            let queryFichajes = `
+                SELECT fichajes.*, usuarios.nombre as nombre_trabajador 
+                FROM fichajes 
+                JOIN usuarios ON fichajes.usuario_id = usuarios.id 
+                WHERE 1=1
+            `;
+            let queryArgs = [];
 
-        if (trabajador_id) {
-            queryFichajes += ` AND fichajes.usuario_id = ?`;
-            queryArgs.push(trabajador_id);
+            if (trabajador_id) {
+                queryFichajes += ` AND fichajes.usuario_id = ?`;
+                queryArgs.push(trabajador_id);
+            }
+
+            if (fecha_inicio) {
+                queryFichajes += ` AND date(fichajes.timestamp) >= ?`;
+                queryArgs.push(fecha_inicio);
+            }
+
+            if (fecha_fin) {
+                queryFichajes += ` AND date(fichajes.timestamp) <= ?`;
+                queryArgs.push(fecha_fin);
+            }
+
+            queryFichajes += ` ORDER BY fichajes.timestamp ASC`;
+
+            const fichajesResult = await db.execute({
+                sql: queryFichajes,
+                args: queryArgs
+            });
+            fichajes = fichajesResult.rows;
         }
-
-        if (fecha_inicio) {
-            queryFichajes += ` AND date(fichajes.timestamp) >= ?`;
-            queryArgs.push(fecha_inicio);
-        }
-
-        if (fecha_fin) {
-            queryFichajes += ` AND date(fichajes.timestamp) <= ?`;
-            queryArgs.push(fecha_fin);
-        }
-
-        queryFichajes += ` ORDER BY fichajes.timestamp ASC`;
-
-        const fichajesResult = await db.execute({
-            sql: queryFichajes,
-            args: queryArgs
-        });
-        const fichajes = fichajesResult.rows;
 
         res.render('admin', { 
             usuarios, 
@@ -345,14 +350,12 @@ app.post('/admin/fichajes/importar', verificarAdmin, upload.single('archivo_exce
             if ((fecha !== undefined) && (hora !== undefined) && tipo) {
                 tipo = String(tipo).trim().toLowerCase();
                 if (tipo === 'entrada' || tipo === 'salida') {
-                    // Formatear la fecha
                     let fechaStr = fecha;
                     if (typeof fecha === 'number') {
                         const parsedDate = xlsx.SSF.parse_date_code(fecha);
                         fechaStr = `${parsedDate.y}-${String(parsedDate.m).padStart(2, '0')}-${String(parsedDate.d).padStart(2, '0')}`;
                     }
 
-                    // Formatear la hora (Maneja tanto si viene como número decimal de Excel como si es texto)
                     let horaStr = hora;
                     if (typeof hora === 'number') {
                         const totalSeconds = Math.round(hora * 86400);
