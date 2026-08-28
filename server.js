@@ -1,7 +1,7 @@
 // server.js
 const express = require('express');
 const { createClient } = require('@libsql/client');
-const path = path ? require('path') : null;
+const path = require('path');
 const bcrypt = require('bcryptjs');
 const session = require('express-session');
 const multer = require('multer');
