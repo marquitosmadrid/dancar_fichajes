@@ -143,7 +143,6 @@ app.get('/', verificarAuth, async (req, res) => {
         const usuario = userResult.rows[0];
         if (!usuario) return res.status(500).send("Error al cargar el usuario.");
 
-        // Consulta filtrada para obtener solo los fichajes de los últimos 4 días (inclusive hoy)
         const fichajesResult = await db.execute({
             sql: `SELECT * FROM fichajes WHERE usuario_id = ? AND timestamp >= datetime('now', '-4 days') ORDER BY timestamp ASC`,
             args: [usuarioId]
@@ -252,7 +251,6 @@ app.get('/admin', verificarAdmin, async (req, res) => {
 
         let fichajes = [];
         
-        // Solo ejecuta la consulta de fichajes si se ha seleccionado al menos un filtro de búsqueda
         if (trabajador_id || fecha_inicio || fecha_fin) {
             let queryFichajes = `
                 SELECT fichajes.*, usuarios.nombre as nombre_trabajador 
@@ -325,6 +323,26 @@ app.post('/admin/usuario/guardar', verificarAdmin, async (req, res) => {
         res.redirect('/admin');
     } catch (err) {
         return res.status(500).send("Error al guardar usuario.");
+    }
+});
+
+// Endpoint para que el administrador actualice el timestamp de cualquier fichaje
+app.post('/admin/editar', verificarAdmin, async (req, res) => {
+    const { fichaje_id, nuevo_timestamp } = req.body;
+
+    if (!fichaje_id || !nuevo_timestamp) {
+        return res.status(400).send("Faltan datos para actualizar el fichaje.");
+    }
+
+    try {
+        await db.execute({
+            sql: `UPDATE fichajes SET timestamp = ? WHERE id = ?`,
+            args: [nuevo_timestamp, fichaje_id]
+        });
+        res.redirect('/admin');
+    } catch (err) {
+        console.error("Error al actualizar el fichaje:", err);
+        return res.status(500).send("Error al actualizar el fichaje.");
     }
 });
 
