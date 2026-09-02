@@ -9,7 +9,7 @@
 </head>
 <body class="bg-gray-100 min-h-screen flex flex-col justify-between">
 
-    <div class="max-w-4xl w-full mx-auto p-6 bg-white rounded-xl shadow-md mt-10 mb-10">
+    <div class="max-w-5xl w-full mx-auto p-6 bg-white rounded-xl shadow-md mt-10 mb-10">
         <header class="mb-6 flex justify-between items-center border-b pb-4">
             <div>
                 <h1 class="text-2xl font-bold text-gray-800">Panel de Administración</h1>
@@ -133,8 +133,8 @@
                     <thead class="bg-gray-50">
                         <tr>
                             <th class="px-4 py-3 text-left font-medium text-gray-500">Trabajador</th>
-                            <th class="px-4 py-3 text-left font-medium text-gray-500">Tipo</th>
-                            <th class="px-4 py-3 text-left font-medium text-gray-500">Fecha y Hora</th>
+                            <th class="px-4 py-3 text-left font-medium text-gray-500">Tipo actual</th>
+                            <th class="px-4 py-3 text-left font-medium text-gray-500">Fecha y Hora actual</th>
                             <th class="px-4 py-3 text-center font-medium text-gray-500">Acciones (Modificar / Borrar)</th>
                         </tr>
                     </thead>
@@ -142,18 +142,28 @@
                         <% if (fichajes && fichajes.length > 0) { %>
                             <% fichajes.forEach(f => { %>
                                 <tr class="hover:bg-gray-50">
-                                    <td class="px-4 py-3 font-medium text-gray-800"><%= f.nombre_trabajador %></td>
-                                    <td class="px-4 py-3 uppercase font-semibold <%= f.tipo === 'entrada' ? 'text-green-600' : 'text-red-600' %>">
+                                    <td class="px-4 py-3 font-medium text-gray-800 text-xs"><%= f.nombre_trabajador %></td>
+                                    <td class="px-4 py-3 uppercase font-semibold text-xs <%= f.tipo === 'entrada' ? 'text-green-600' : 'text-red-600' %>">
                                         <%= f.tipo %>
                                     </td>
                                     <td class="px-4 py-3 text-gray-600 text-xs"><%= f.timestamp %></td>
                                     <td class="px-4 py-3">
                                         <div class="flex items-center justify-center space-x-2">
-                                            <!-- Formulario de actualización de hora -->
+                                            <!-- Formulario completo de actualización (Tipo y Timestamp) -->
                                             <form action="/admin/editar" method="POST" class="flex items-center space-x-1">
                                                 <input type="hidden" name="fichaje_id" value="<%= f.id %>">
-                                                <input type="text" name="nuevo_timestamp" value="<%= f.timestamp %>" class="border rounded px-2 py-1 text-xs w-36 bg-white">
-                                                <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white py-1 px-2 rounded text-xs">Actualizar</button>
+                                                <input type="hidden" name="redirect_query" value="<%= typeof urlQuery !== 'undefined' ? urlQuery : '' %>">
+                                                
+                                                <!-- Selector para cambiar entre Entrada y Salida -->
+                                                <select name="nuevo_tipo" class="border rounded px-1 py-1 text-xs bg-white font-medium">
+                                                    <option value="entrada" <%= f.tipo === 'entrada' ? 'selected' : '' %>>Entrada</option>
+                                                    <option value="salida" <%= f.tipo === 'salida' ? 'selected' : '' %>>Salida</option>
+                                                </select>
+
+                                                <!-- Input para la fecha y hora -->
+                                                <input type="text" name="nuevo_timestamp" value="<%= f.timestamp %>" class="border rounded px-2 py-1 text-xs w-36 bg-white" title="Formato: AAAA-MM-DD HH:MM:SS">
+                                                
+                                                <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white py-1 px-2 rounded text-xs font-medium">Actualizar</button>
                                             </form>
 
                                             <!-- Formulario para eliminar el fichaje -->
@@ -177,6 +187,14 @@
     </div>
 
     <script>
+        // Capturar los query params actuales de la URL para pasarlos al formulario de edición y mantener los filtros activos tras actualizar
+        document.addEventListener("DOMContentLoaded", function() {
+            const queryString = window.location.search.substring(1);
+            document.querySelectorAll('input[name="redirect_query"]').forEach(input => {
+                input.value = queryString;
+            });
+        });
+
         function cargarUsuarioParaEditar(id, nombre, username, rol) {
             document.getElementById('usuario_id').value = id;
             document.getElementById('usuario_nombre').value = nombre;

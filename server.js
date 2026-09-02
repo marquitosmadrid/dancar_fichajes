@@ -326,20 +326,23 @@ app.post('/admin/usuario/guardar', verificarAdmin, async (req, res) => {
     }
 });
 
-// Endpoint para que el administrador actualice el timestamp de cualquier fichaje
+// Endpoint para que el administrador actualice el tipo y timestamp de cualquier fichaje
 app.post('/admin/editar', verificarAdmin, async (req, res) => {
-    const { fichaje_id, nuevo_timestamp } = req.body;
+    const { fichaje_id, nuevo_tipo, nuevo_timestamp, redirect_query } = req.body;
 
-    if (!fichaje_id || !nuevo_timestamp) {
+    if (!fichaje_id || !nuevo_tipo || !nuevo_timestamp) {
         return res.status(400).send("Faltan datos para actualizar el fichaje.");
     }
 
     try {
         await db.execute({
-            sql: `UPDATE fichajes SET timestamp = ? WHERE id = ?`,
-            args: [nuevo_timestamp, fichaje_id]
+            sql: `UPDATE fichajes SET tipo = ?, timestamp = ? WHERE id = ?`,
+            args: [nuevo_tipo, nuevo_timestamp, fichaje_id]
         });
-        res.redirect('/admin');
+        
+        // Redirige manteniendo los filtros que estaban aplicados si existen
+        const queryString = redirect_query ? `?${redirect_query}` : '';
+        res.redirect(`/admin${queryString}`);
     } catch (err) {
         console.error("Error al actualizar el fichaje:", err);
         return res.status(500).send("Error al actualizar el fichaje.");
